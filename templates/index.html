@@ -1,0 +1,15 @@
+
+{% extends 'base.html' %}
+
+{% block header %}
+  {% block title %}
+    Welcome!
+  {% endblock %}
+{% endblock %}
+
+{% block content %}
+<div class="container py-5">
+  {{ readme_html | safe }}
+</div>
+{% endblock %}
+

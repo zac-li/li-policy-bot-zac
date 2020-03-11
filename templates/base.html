@@ -1,0 +1,22 @@
+<!doctype html>
+<title>GH Webhooks - {% block title %}{% endblock %}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/bootstrap.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+<section class="content">
+  <header>
+    
+    <div class="navbar navbar-dark bg-dark box-shadow">
+        <div class="container d-flex justify-content-between">
+          <a href="#" class="navbar-brand d-flex align-items-center">
+            <strong>{% block header %}{% endblock %}</strong>
+          </a>
+        </div>
+      </div>
+  </header>
+  {% for message in get_flashed_messages() %}
+    <div class="flash">{{ message }}</div>
+  {% endfor %}
+  <main>
+      {% block content %}{% endblock %}
+  </main>
+</section>
