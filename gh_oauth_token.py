@@ -30,6 +30,8 @@ _private_key_path = f'private/gh-app.key'
 
 def get_token(app_id, installation_id):
     """Get a token from GitHub."""
+    app_id = 19
+    installation_id = 23
     token_url = f"{API_BASE_URL}/app/installations/{installation_id}/access_tokens"
     temp_state = str(uuid.uuid4())
     private_key = get_private_key()
@@ -86,7 +88,7 @@ def store_token(token_json):
 def peek_app_token():
     """Peek on secret file that has the token, deserialize it and return the dict."""
     if not os.path.exists(_token_storage_path):
-        return None
+        return '{}'
 
     try:
         with open(_token_storage_path) as secret_file:

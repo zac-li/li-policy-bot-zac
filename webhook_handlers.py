@@ -23,7 +23,7 @@ def zac_test(webhook):
 
     # Gather the required information from the payload to send a successful request to GitHub REST API.
     repo_full_name = str(webhook.repository.full_name)
-    pr_number = str(webhook.issue.number)
+    pr_number = str(webhook.pull_request.number)
 
     comments_url = f'repos/{repo_full_name}/issues/{pr_number}/comments'
 
