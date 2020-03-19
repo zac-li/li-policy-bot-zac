@@ -31,33 +31,29 @@ def zac_test(webhook):
     make_github_api_call(
         comments_url,
         'POST', {
-            'body': "Zac test yes!!"
+            'body': "Zac test RB!!"
         }
     )
 
 
-def zac_test_check(webhook):
-    log.info('Zac test check!!')
-
-    # Gather the requried information from the payload to send a successful request to GitHub REST API.
+def pr_description_check(webhook):
+    # Gather the required information from the payload to send a successful request to GitHub REST API.
     repo_full_name = str(webhook.repository.full_name)
     description = str(webhook.pull_request.body)
 
     testing_done = description.lower().split('testing done')
 
-    check_name = 'Testing Done'
+    check_name = 'PR Basic Information Check'
     check_status = 'completed'
     head_sha = str(webhook.pull_request.head.sha)
-    output_title = 'Status of completion of Testing Done Section'
+    output_title = 'Status of Completion of PR Description Section'
 
     if len(testing_done) > 1 and len(testing_done[1]) > 5:  # Naively assume there is something there.
-        log.info("This PR already has a testing done section. Do nothing.")
         check_conclusion = 'success'
-        output_summary = 'Testing Done section present. Thank you!'
+        output_summary = 'Basic information of the PR has been filled.'
     else:
-        log.info("No Testing done section found.")
         check_conclusion = 'failure'
-        output_summary = 'Please complete the Testing Done section of the description for compliance.'
+        output_summary = 'Please fill out the Description and Testing Done section for compliance.'
 
     set_check_on_pr(repo_full_name, check_name, check_status, check_conclusion, head_sha, output_title, output_summary)
 
@@ -65,34 +61,17 @@ def zac_test_check(webhook):
 def check_trunk_status(webhook):
     """
     Steps -
-    1. Check for event - PR Update and comments
+    1. Check for event - PR comments
     2. Set in_progress
     3. Set status
     """
     log.info('Processing Trunk Status Check')
     repo_full_name = str(webhook.repository.full_name)
-    pr_number = None
-    author = None
 
     check_name = 'Multiproduct Trunk Status'
     check_status = 'completed'
-    check_conclusion = None
-    head_sha = None
-    output_title = None
-    output_summary = None
 
-    if webhook.pull_request:
-        log.info("Pull Request Event")
-
-        # Nothing to do if the PR was edited or synced.
-        if str(webhook.action).lower() != 'opened':
-            return
-
-        head_sha = str(webhook.pull_request.head.sha)
-        pr_number = str(webhook.pull_request.number)
-        author = str(webhook.pull_request.user.login)
-
-    elif webhook.issue and webhook.issue.pull_request and webhook.comment:
+    if webhook.issue and webhook.issue.pull_request and webhook.comment:
         log.info("Issue Comment Event")
 
         # Automated comment, no need to refresh
@@ -102,60 +81,43 @@ def check_trunk_status(webhook):
 
         # Get PR info to get Head SHA and author
         pr_number = str(webhook.issue.number)
-        pr_info = ObjectifyJSON(make_github_api_call(str(webhook.issue.pull_request.url), 'GET', None))
+        pr_url = f'repos/{repo_full_name}/pulls/{pr_number}'
+        pr_info = ObjectifyJSON(make_github_api_call(pr_url, 'GET', None))  # ??????
         head_sha = str(pr_info.head.sha)
         author = str(pr_info.user.login)
 
-        # If the author added an override, set it and skip further validation
-        if str(webhook.action) == 'created' and issue_author == author and 'TRUNKBLOCKERFIX' in str(webhook.issue.body):
-            check_conclusion = 'success'
-            output_title = 'Trunk lock overridden.'
-            output_summary = '''Forced status check to success via TRUNKBLOCKERFIX override.
-            More information about this override can be found at https://iwww.corp.linkedin.com/wiki/cf/display/TOOLS/Multiproduct+Trunk+Development#MultiproductTrunkDevelopment-TRUNKBLOCKERFIX
-            '''
-
-    if not pr_number or not head_sha:
-        return
-
-    # If not decided yet, check the comments
-    if not check_conclusion:
-        log.info(f"Setting Trunk check In Progress for PR: {repo_full_name}/{pr_number} at {head_sha}")
-
-        # Set in_progress state
-        set_check_on_pr(repo_full_name, check_name, 'in_progress', None, head_sha, output_title, output_summary)
-
         log.info(f"Getting comments for PR: {repo_full_name}/{pr_number} at {head_sha}")
 
-        # Get comments
-        comments_url = f'{API_BASE_URL}/repos/{repo_full_name}/issues/{pr_number}/comments'
-        comments = make_github_api_call(comments_url, 'GET', None)
-        num_comments = len(comments)
-
-        log.info(f'Found {num_comments} comments.')
-
-        # Look for override
-        for comment in comments:
-            comment = ObjectifyJSON(comment)
-            comment_author = str(comment.user.login)
-            if 'TRUNKBLOCKERFIX' in str(comment.body) and author == comment_author:
-                check_conclusion = 'success'
-                output_title = 'Trunk lock overridden.'
-                output_summary = '''Forced status check to success via TRUNKBLOCKERFIX override.
-                More information about this override can be found at https://iwww.corp.linkedin.com/wiki/cf/display/TOOLS/Multiproduct+Trunk+Development#MultiproductTrunkDevelopment-TRUNKBLOCKERFIX
-                '''
-
-    # If still not decided, fail the check
-    if not check_conclusion:
         check_conclusion = 'failure'
-        output_title = 'Trunk locked, merge not allowed'
-        output_summary = '''Trunk status locked by owners of this Multiproduct.
-        No new merges are allowed at this time.
+        output_title = 'MP locked, merge not allowed'
+        output_summary = '''MP locked by owners of this Multiproduct. No new merges are allowed at this time.
         You may override this check by adding a comment `TRUNKBLOCKERFIX` to this PR. Doing so will notify the owners of this merge.
         Read more about this policy at https://iwww.corp.linkedin.com/wiki/cf/display/TOOLS/questions/184796939/what-is-the-recommended-way-to-lock-checkins-to-multiproduct
         '''
 
-    # Finally, set the check
-    if check_conclusion and head_sha and output_title and output_summary:
+        found_override = False
+
+        if 'TRUNKBLOCKERFIX' in str(webhook.comment.body):
+            found_override = True
+        else:
+            # Get comments
+            comments_url = f'repos/{repo_full_name}/issues/{pr_number}/comments'
+            comments = make_github_api_call(comments_url, 'GET', None)
+
+            for comment in comments:
+                comment = ObjectifyJSON(comment)
+                comment_author = str(comment.user.login)
+                if 'TRUNKBLOCKERFIX' in str(comment.body) and author == comment_author:
+                    found_override = True
+                    break
+
+        if found_override:
+            check_conclusion = 'success'
+            output_title = 'MP lock overridden.'
+            output_summary = '''Forced status check to success via TRUNKBLOCKERFIX override.
+            More information about this override can be found at https://iwww.corp.linkedin.com/wiki/cf/display/TOOLS/Multiproduct+Trunk+Development#MultiproductTrunkDevelopment-TRUNKBLOCKERFIX
+            '''
+
         set_check_on_pr(repo_full_name, check_name, check_status, check_conclusion, head_sha, output_title, output_summary)
 
 

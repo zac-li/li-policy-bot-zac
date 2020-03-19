@@ -6,7 +6,7 @@ from string import Template
 from typing import Any, Mapping
 
 from gh_oauth_token import retrieve_token
-from bot_config import API_BASE_URL, GH_USER_TOKEN
+from bot_config import API_BASE_URL
 
 log = logging.getLogger(__name__)
 
@@ -60,11 +60,11 @@ new_comment = make_github_rest_api_call(
 
 def make_github_gql_api_call(query):
     """Send API call to Github GraphQL API with required Auth."""
-    token = GH_USER_TOKEN
+    token = retrieve_token()
 
     headers = {'Accept': 'application/vnd.github.ocelot-preview;application/vnd.github.cateye-preview+json', 'Content-Type': 'application/json', 'Authorization': f'token {token}'}
 
-    url = f'https://ghetest.trafficmanager.net/graphql?access_token={token}'
+    url = f'https://ghetest.trafficmanager.net/api/graphql?access_token={token}'
 
     response = requests.post(url, headers=headers, json={'query': query})
     return json.loads(response.text)
