@@ -31,7 +31,7 @@ def zac_test(webhook):
     make_github_api_call(
         comments_url,
         'POST', {
-            'body': "Zac test RB!!"
+            'body': "Zac test PR !!"
         }
     )
 
