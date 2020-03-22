@@ -1,3 +1,4 @@
+import re
 import logging
 from gh_utils import make_github_api_call, make_github_gql_api_call, set_check_on_pr, API_BASE_URL, format_query
 
@@ -5,23 +6,12 @@ from gh_utils import make_github_api_call, make_github_gql_api_call, set_check_o
 from objectify_json import ObjectifyJSON
 
 
-"""
-SPECIALIZED WEBHOOK HANDLERS 
-=======================
-
-Becaue we may receive many webhooks for many different reasons, it's a good idea
-to "hand off" control from `process_message()` to a dedicated function ASAP.
-
-This is a good place for these specialized handlers
-
-"""
 log = logging.getLogger(__name__)
 
 
 def zac_test(webhook):
     log.info('Zac test! ok')
 
-    # Gather the required information from the payload to send a successful request to GitHub REST API.
     repo_full_name = str(webhook.repository.full_name)
     pr_number = str(webhook.pull_request.number)
 
@@ -36,24 +26,37 @@ def zac_test(webhook):
     )
 
 
-def pr_description_check(webhook):
-    # Gather the required information from the payload to send a successful request to GitHub REST API.
+def testing_done_pass(description):
+    testing_done = description.lower().split('testing done')
+    return len(testing_done) > 1 and len(testing_done[1]) > 5
+
+
+def description_pass(description):
+    description = description.lower().split('description')
+    return len(description) > 1 and len(description[1]) > 5
+
+
+def check_not_pass(description):
+    # if there are more than 4 spaces, it won't be check box
+    return bool(re.findall('-\s{1,4}\[\s\]', description))
+
+
+def pr_template_check(webhook):
     repo_full_name = str(webhook.repository.full_name)
     description = str(webhook.pull_request.body)
-
-    testing_done = description.lower().split('testing done')
 
     check_name = 'PR Basic Information Check'
     check_status = 'completed'
     head_sha = str(webhook.pull_request.head.sha)
     output_title = 'Status of Completion of PR Description Section'
 
-    if len(testing_done) > 1 and len(testing_done[1]) > 5:  # Naively assume there is something there.
+    if testing_done_pass(description) and description_pass(description) and not check_not_pass(description):
         check_conclusion = 'success'
         output_summary = 'Basic information of the PR has been filled.'
     else:
         check_conclusion = 'failure'
-        output_summary = 'Please fill out the Description and Testing Done section for compliance.'
+        output_summary = 'Please make out the Description and Testing Done section are filled and ' \
+                         'checkboxes are checked.'
 
     set_check_on_pr(repo_full_name, check_name, check_status, check_conclusion, head_sha, output_title, output_summary)
 
@@ -130,7 +133,6 @@ def check_comment_resolution(webhook):
 
     check_name = 'Comment Resolution'
     check_status = 'completed'
-    check_conclusion = None
     head_sha = None
     output_title = None
     output_summary = None
@@ -210,4 +212,3 @@ def check_comment_resolution(webhook):
         output_summary = f'Check failed because only {resolved}/{total} comments resolved.'
 
     set_check_on_pr(repo_full_name, check_name, check_status, check_conclusion, head_sha, output_title, output_summary)
-
