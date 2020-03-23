@@ -1,6 +1,6 @@
 from bot_config import validate_env_variables
 from gh_oauth_token import get_token, store_token
-from webhook_handlers import check_comment_resolution, check_trunk_status, zac_test, pr_template_check
+from webhook_handlers import check_comment_resolution, check_trunk_status, zac_test, pr_template_check,  process_override
 
 import logging
 import sys
@@ -72,14 +72,17 @@ def process_message():
 
     """
     webhook = ObjectifyJSON(request.json)
+    event_type = request.headers['X-Github-Event']
 
-    if request.headers['X-Github-Event'] == 'pull_request' and str(webhook.action).lower() == 'opened':
+    if event_type == 'pull_request' and str(webhook.action).lower() == 'opened':
         zac_test(webhook)
-    if request.headers['X-Github-Event'] == 'pull_request' and str(webhook.action).lower() == 'edited':
+    if event_type == 'pull_request' and str(webhook.action).lower() == 'edited':
         pr_template_check(webhook)
         check_comment_resolution(webhook)
-    if request.headers['X-Github-Event'] == 'issue_comment' and str(webhook.action).lower() == 'created':
+    if event_type == 'issue_comment' and str(webhook.action).lower() == 'created':
         check_trunk_status(webhook)
+    if event_type == 'pull_request' and str(webhook.action).lower() in ['synchronize', 'opened']:
+        process_override(webhook)
 
     return 'GOOD'
 

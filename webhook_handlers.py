@@ -1,5 +1,6 @@
 import re
 import logging
+from constants import OVERRIDE_ALLOWED
 from gh_utils import make_github_api_call, make_github_gql_api_call, set_check_on_pr, API_BASE_URL, format_query
 
 
@@ -68,15 +69,12 @@ def check_trunk_status(webhook):
     2. Set in_progress
     3. Set status
     """
-    log.info('Processing Trunk Status Check')
     repo_full_name = str(webhook.repository.full_name)
 
     check_name = 'Multiproduct Trunk Status'
     check_status = 'completed'
 
     if webhook.issue and webhook.issue.pull_request and webhook.comment:
-        log.info("Issue Comment Event")
-
         # Automated comment, no need to refresh
         issue_author = str(webhook.issue.user.login)
         if 'linkedin' in issue_author:
@@ -85,7 +83,7 @@ def check_trunk_status(webhook):
         # Get PR info to get Head SHA and author
         pr_number = str(webhook.issue.number)
         pr_url = f'repos/{repo_full_name}/pulls/{pr_number}'
-        pr_info = ObjectifyJSON(make_github_api_call(pr_url, 'GET', None))  # ??????
+        pr_info = ObjectifyJSON(make_github_api_call(pr_url, 'GET', None))
         head_sha = str(pr_info.head.sha)
         author = str(pr_info.user.login)
 
@@ -125,7 +123,6 @@ def check_trunk_status(webhook):
 
 
 def check_comment_resolution(webhook):
-    log.info('Processing Comment Resolution Check')
     repo_full_name = str(webhook.repository.full_name)
     owner = repo_full_name.split('/')[0]
     repo = repo_full_name.split('/')[1]
@@ -138,7 +135,6 @@ def check_comment_resolution(webhook):
     output_summary = None
 
     if webhook.pull_request.head.sha:
-        log.info("Pull Request Event")
         pr_number = str(webhook.pull_request.number)
         head_sha = str(webhook.pull_request.head.sha)
 
@@ -153,7 +149,6 @@ def check_comment_resolution(webhook):
             return
 
     elif webhook.issue and webhook.issue.pull_request and webhook.comment:
-        log.info("Issue Comment Event")
         pr_number = str(webhook.issue.number)
         pr_info = ObjectifyJSON(make_github_api_call(str(webhook.issue.pull_request.url), 'GET', None))
         head_sha = str(pr_info.head.sha)
@@ -212,3 +207,27 @@ def check_comment_resolution(webhook):
         output_summary = f'Check failed because only {resolved}/{total} comments resolved.'
 
     set_check_on_pr(repo_full_name, check_name, check_status, check_conclusion, head_sha, output_title, output_summary)
+
+
+def process_override(webhook):
+    repo_full_name = str(webhook.repository.full_name)
+    pr_number = str(webhook.pull_request.number)
+
+    commits_url = f'repos/{repo_full_name}/pulls/{pr_number}/commits'
+    commits = ObjectifyJSON(make_github_api_call(commits_url, 'GET', None))
+
+    override_used = set()
+    commit_messages = [str(commit['commit']['message']) for commit in commits]
+    for commit_message in commit_messages:
+        for allowed_override in OVERRIDE_ALLOWED:
+            if allowed_override in commit_message:
+                override_used.add(allowed_override)
+
+    label_url = f'repos/{repo_full_name}/issues/{pr_number}/labels'
+    make_github_api_call(
+        label_url,
+        'POST', {
+            'labels': list(override_used)
+        }
+    )
+    log.info(f'labels: {override_used} applied')
