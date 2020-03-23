@@ -172,22 +172,22 @@ def check_comment_resolution(webhook):
     {
         repository(owner:"$owner", name:"$repo") {
             issueOrPullRequest(number:$pr_number) {
-            ... on PullRequest {
-                id
-                reviewThreads(last:50) {
-                nodes {
-                    id,
-                    isResolved
-                }
-                }
-                commits(last: 1) {
-                nodes {
-                    commit {
-                    oid
+                ... on PullRequest {
+                    id
+                    reviewThreads(last:50) {
+                        nodes {
+                            id,
+                            isResolved
+                        }
+                    }
+                    reviews(last: 50) {
+                        nodes {
+                            id,
+                            state,
+                            body
+                        }
                     }
                 }
-                }
-            }
             }
         }
     }
