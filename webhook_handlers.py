@@ -11,8 +11,6 @@ log = logging.getLogger(__name__)
 
 
 def zac_test(webhook):
-    log.info('Zac test! ok')
-
     repo_full_name = str(webhook.repository.full_name)
     pr_number = str(webhook.pull_request.number)
 
@@ -22,7 +20,7 @@ def zac_test(webhook):
     make_github_api_call(
         comments_url,
         'POST', {
-            'body': "Zac test PR !!"
+            'body': "This is test PR from Zac !!"
         }
     )
 

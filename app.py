@@ -76,13 +76,18 @@ def process_message():
 
     if event_type == 'pull_request' and str(webhook.action).lower() == 'opened':
         zac_test(webhook)
+
+    if event_type == 'pull_request' and str(webhook.action).lower() in ['synchronize', 'opened']:
+        pr_template_check(webhook)
+        check_comment_resolution(webhook)
+        process_override(webhook)
+        check_trunk_status(webhook)
     if event_type == 'pull_request' and str(webhook.action).lower() == 'edited':
         pr_template_check(webhook)
+    if event_type == 'pull_request_review_comment':
         check_comment_resolution(webhook)
     if event_type == 'issue_comment' and str(webhook.action).lower() == 'created':
         check_trunk_status(webhook)
-    if event_type == 'pull_request' and str(webhook.action).lower() in ['synchronize', 'opened']:
-        process_override(webhook)
 
     return 'GOOD'
 
