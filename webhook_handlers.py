@@ -37,7 +37,7 @@ def description_pass(description):
 
 def check_not_pass(description):
     # if there are more than 4 spaces, it won't be check box
-    return bool(re.findall('-\s{1,4}\[\s\]', description))
+    return bool(re.findall('[-\*]\s{1,4}\[\s\]', description))
 
 
 def pr_template_check(webhook):
