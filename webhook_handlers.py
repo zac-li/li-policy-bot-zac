@@ -120,13 +120,13 @@ def check_trunk_status(webhook):
         set_check_on_pr(repo_full_name, check_name, check_status, check_conclusion, head_sha, output_title, output_summary)
 
 
-def check_comment_resolution(webhook):
+def check_conversation_resolution(webhook):
     repo_full_name = str(webhook.repository.full_name)
     owner = repo_full_name.split('/')[0]
     repo = repo_full_name.split('/')[1]
     pr_number = None
 
-    check_name = 'Comment Resolution'
+    check_name = 'Conversation Resolution'
     check_status = 'completed'
     head_sha = None
     output_title = None

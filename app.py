@@ -1,6 +1,6 @@
 from bot_config import validate_env_variables
 from gh_oauth_token import get_token, store_token
-from webhook_handlers import check_comment_resolution, check_trunk_status, zac_test, pr_template_check,  process_override
+from webhook_handlers import check_conversation_resolution, check_trunk_status, zac_test, pr_template_check,  process_override
 
 import logging
 import sys
@@ -79,13 +79,13 @@ def process_message():
 
     if event_type == 'pull_request' and str(webhook.action).lower() in ['synchronize', 'opened']:
         pr_template_check(webhook)
-        check_comment_resolution(webhook)
+        check_conversation_resolution(webhook)
         process_override(webhook)
         check_trunk_status(webhook)
     if event_type == 'pull_request' and str(webhook.action).lower() == 'edited':
         pr_template_check(webhook)
     if event_type == 'pull_request_review_comment':
-        check_comment_resolution(webhook)
+        check_conversation_resolution(webhook)
     if event_type == 'issue_comment' and str(webhook.action).lower() == 'created':
         check_trunk_status(webhook)
 
