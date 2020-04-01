@@ -4,7 +4,7 @@ import logging
 from functools import reduce
 
 logging.basicConfig(stream=sys.stdout, level=logging.INFO,
-                    format='[%(levelname)8s] %(process)s:%(name)s\t%(message)s')
+                    format='%(asctime)s [%(levelname)s] %(process)s:%(name)s\t%(message)s')
 log = logging.getLogger(__name__)
 
 

@@ -158,8 +158,6 @@ def check_conversation_resolution(webhook):
     # Set in_progress state
     set_check_on_pr(repo_full_name, check_name, 'in_progress', None, head_sha, output_title, output_summary)
 
-    log.info(f"Getting comments for PR: {repo_full_name}/{pr_number} at {head_sha}")
-
     resolved, total = _get_resolved_and_total_conversations(owner, repo, pr_number)
 
     set_conversation_result_check(resolved, total, repo_full_name, check_name, head_sha)
@@ -215,6 +213,8 @@ def run_conversation_check_scan_for_prs(owner, repo):
     check_name = 'Conversation Resolution'
     for pr_number, sha in pr_shas.items():
         resolved, total = _get_resolved_and_total_conversations(owner, repo, pr_number)
+        log.info(f'Setting conversation resolution status ({resolved}/{total}) '
+                 f'for PR: {owner}/{repo}/{pr_number} at {sha}')
         set_conversation_result_check(resolved, total, f'{owner}/{repo}', check_name, sha)
 
 
