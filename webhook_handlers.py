@@ -1,7 +1,7 @@
 import re
 import logging
 from constants import OVERRIDE_ALLOWED
-from gh_utils import make_github_api_call, make_github_gql_api_call, set_check_on_pr, API_BASE_URL, format_query
+from gh_utils import make_github_api_call, make_github_gql_api_call, set_check_on_pr, format_query
 
 
 from objectify_json import ObjectifyJSON
@@ -160,25 +160,33 @@ def check_conversation_resolution(webhook):
 
     log.info(f"Getting comments for PR: {repo_full_name}/{pr_number} at {head_sha}")
 
+    resolved, total = _get_resolved_and_total_conversations(owner, repo, pr_number)
+
+    set_conversation_result_check(resolved, total, repo_full_name, check_name, head_sha)
+
+
+def set_conversation_result_check(resolved, total, repo_full_name, check_name, head_sha):
+    if resolved == total:
+        check_conclusion = 'success'
+        output_title = 'All conversations are resolved'
+        output_summary = 'Check passed as there are no unresolved comments on this Pull Request.'
+    else:
+        check_conclusion = 'failure'
+        output_title = f'{resolved}/{total} conversations resolved'
+        output_summary = f'Check failed because only {resolved}/{total} comments resolved.'
+
+    set_check_on_pr(repo_full_name, check_name, 'completed', check_conclusion, head_sha, output_title, output_summary)
+
+
+def _get_resolved_and_total_conversations(owner, repo, pr_number):
     # Get review comments from GraphQL API
     query = format_query("""
     {
         repository(owner:"$owner", name:"$repo") {
-            issueOrPullRequest(number:$pr_number) {
-                ... on PullRequest {
-                    id
-                    reviewThreads(last:50) {
-                        nodes {
-                            id,
-                            isResolved
-                        }
-                    }
-                    reviews(last: 50) {
-                        nodes {
-                            id,
-                            state,
-                            body
-                        }
+            pullRequest(number:$pr_number) {
+                reviewThreads(last: 50) {
+                    nodes {
+                      isResolved
                     }
                 }
             }
@@ -190,21 +198,24 @@ def check_conversation_resolution(webhook):
 
     # Count the resolved and unresolved conversations.
     resolved = total = 0
-    for node in response.data.repository.issueOrPullRequest.reviewThreads.nodes._data:
+    for node in response.data.repository.pullRequest.reviewThreads.nodes._data:
         total += 1
         resolved += (1 if node['isResolved'] else 0)
 
-    # 2019-09-13(bwarsaw): Is it true that we can only create statuses using the v3 API?
-    if resolved == total:
-        check_conclusion = 'success'
-        output_title = 'All conversations are resolved'
-        output_summary = 'Check passed as there are no unresolved comments on this Pull Request.'
-    else:
-        check_conclusion = 'failure'
-        output_title = f'{resolved}/{total} conversations resolved'
-        output_summary = f'Check failed because only {resolved}/{total} comments resolved.'
+    return resolved, total
 
-    set_check_on_pr(repo_full_name, check_name, check_status, check_conclusion, head_sha, output_title, output_summary)
+
+def get_sha(owner, repo):
+    pull_requests = ObjectifyJSON(make_github_api_call(f'repos/{owner}/{repo}/pulls'))
+    return {str(pull_request['number']): str(pull_request['head']['sha']) for pull_request in pull_requests}
+
+
+def run_conversation_check_scan_for_prs(owner, repo):
+    pr_shas = get_sha(owner, repo)
+    check_name = 'Conversation Resolution'
+    for pr_number, sha in pr_shas.items():
+        resolved, total = _get_resolved_and_total_conversations(owner, repo, pr_number)
+        set_conversation_result_check(resolved, total, f'{owner}/{repo}', check_name, sha)
 
 
 def process_override(webhook):

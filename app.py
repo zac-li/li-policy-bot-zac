@@ -1,6 +1,7 @@
 from bot_config import validate_env_variables
 from gh_oauth_token import get_token, store_token
-from webhook_handlers import check_conversation_resolution, check_trunk_status, zac_test, pr_template_check,  process_override
+from webhook_handlers import check_conversation_resolution, check_trunk_status, zac_test, pr_template_check,  \
+    process_override, run_conversation_check_scan_for_prs
 
 import logging
 import sys
@@ -75,7 +76,7 @@ def process_message():
     event_type = request.headers['X-Github-Event']
 
     if event_type == 'pull_request' and str(webhook.action).lower() == 'opened':
-        zac_test(webhook)
+        pass
 
     if event_type == 'pull_request' and str(webhook.action).lower() in ['synchronize', 'opened']:
         pr_template_check(webhook)
@@ -89,6 +90,12 @@ def process_message():
     if event_type == 'issue_comment' and str(webhook.action).lower() == 'created':
         check_trunk_status(webhook)
 
+    return 'GOOD'
+
+
+@app.route('/run_conversation_resolution_scan', methods=['GET'])
+def run_conversation_resolution_scan():
+    run_conversation_check_scan_for_prs('li-foundation', 'zac-test-repo')
     return 'GOOD'
 
 
