@@ -6,7 +6,7 @@ from webhook_handlers import run_conversation_check_scan_for_prs
 def main():
     while True:
         run_conversation_check_scan_for_prs('li-foundation', 'zac-test-repo')
-        time.sleep(60)
+        time.sleep(30)
 
 
 if __name__ == '__main__':

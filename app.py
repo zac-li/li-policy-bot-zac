@@ -89,13 +89,14 @@ def process_message():
         check_conversation_resolution(webhook)
     if event_type == 'issue_comment' and str(webhook.action).lower() == 'created':
         check_trunk_status(webhook)
+        check_conversation_resolution(webhook)
 
     return 'GOOD'
 
 
-@app.route('/run_conversation_resolution_scan', methods=['GET'])
-def run_conversation_resolution_scan():
-    run_conversation_check_scan_for_prs('li-foundation', 'zac-test-repo')
+@app.route('/run_conversation_resolution_scan/<owner>/<repo>', methods=['GET'])
+def run_conversation_resolution_scan(owner, repo):
+    run_conversation_check_scan_for_prs(owner, repo)
     return 'GOOD'
 
 
@@ -103,4 +104,4 @@ if __name__ == 'app' or __name__ == '__main__':
     print(
         f'\n\033[96m\033[1m--- STARTING THE APP: [{datetime.datetime.now().strftime("%m/%d, %H:%M:%S")}] ---\033[0m \n')
     validate_env_variables()
-    app.run(port=8080)
+    app.run(port=8000)
