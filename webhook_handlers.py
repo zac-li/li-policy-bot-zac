@@ -118,7 +118,7 @@ def check_conversation_resolution(webhook):
 
     # Re-run
     elif webhook.check_run and webhook.check_run.pull_requests:
-        pr_number = str(webhook.check_run.pull_request[0])
+        pr_number = str(webhook.check_run.pull_requests[0].number)
         head_sha = str(webhook.check_run.head_sha)
 
     # Incomplete info, give up

@@ -1,7 +1,7 @@
 from bot_config import validate_env_variables
 from gh_oauth_token import get_token, store_token
-from webhook_handlers import check_conversation_resolution, check_trunk_status, zac_test, pr_template_check,  \
-    process_override, run_conversation_check_scan_for_prs
+from webhook_handlers import check_conversation_resolution, check_trunk_status, \
+    pr_template_check,  run_conversation_check_scan_for_prs
 
 import logging
 import sys
@@ -75,9 +75,7 @@ def process_message():
     webhook = ObjectifyJSON(request.json)
     event_type = request.headers['X-Github-Event']
 
-    if event_type == 'pull_request' and str(webhook.action).lower() == 'opened':
-        pass
-
+    # TODO: clean up here
     if event_type == 'pull_request' and str(webhook.action).lower() in ['synchronize', 'opened']:
         pr_template_check(webhook)
         check_conversation_resolution(webhook)
@@ -88,7 +86,8 @@ def process_message():
         check_conversation_resolution(webhook)
     if event_type == 'issue_comment' and str(webhook.action).lower() == 'created':
         check_conversation_resolution(webhook)
-    if event_type == 'check_run' and str(webhook.action).lower() == 'rerequested':
+    if event_type == 'check_run' and str(webhook.action).lower() == 'rerequested' \
+            and str(webhook.check_run.name) == 'Conversation Resolution':
         check_conversation_resolution(webhook)
 
     return 'GOOD'
