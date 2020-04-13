@@ -86,9 +86,13 @@ def process_message():
         check_conversation_resolution(webhook)
     if event_type == 'issue_comment' and str(webhook.action).lower() == 'created':
         check_conversation_resolution(webhook)
-    if event_type == 'check_run' and str(webhook.action).lower() == 'rerequested' \
-            and str(webhook.check_run.name) == 'Conversation Resolution':
-        check_conversation_resolution(webhook)
+    if event_type == 'check_run' and str(webhook.action).lower() == 'rerequested':
+        if str(webhook.check_run.name) == 'Conversation Resolution':
+            check_conversation_resolution(webhook)
+        elif str(webhook.check_run.name) == 'Multiproduct Trunk Status':
+            check_trunk_status(webhook)
+        elif str(webhook.check_run.name) == 'PR Basic Information Check':
+            pr_template_check(webhook)
 
     return 'GOOD'
 

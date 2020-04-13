@@ -1,4 +1,3 @@
-import re
 import logging
 from constants import OVERRIDE_ALLOWED
 from gh_utils import make_github_api_call, make_github_gql_api_call, set_check_on_pr, format_query
@@ -10,30 +9,24 @@ from objectify_json import ObjectifyJSON
 log = logging.getLogger(__name__)
 
 
-def testing_done_pass(description):
-    testing_done = description.lower().split('testing done')
-    return len(testing_done) > 1 and len(testing_done[1]) > 5
-
-
-def description_pass(description):
-    description = description.lower().split('description')
-    return len(description) > 1 and len(description[1]) > 5
-
-
-def check_not_pass(description):
-    # if there are more than 4 spaces, it won't be check box
-    return bool(re.findall('[-\*]\s{1,4}\[\s\]', description))
-
-
 def pr_template_check(webhook):
     repo_full_name = str(webhook.repository.full_name)
-    description = str(webhook.pull_request.body)
 
     check_name = 'PR Basic Information Check'
     check_status = 'completed'
-    head_sha = str(webhook.pull_request.head.sha)
 
-    if description_pass(description):
+    # It could be either from run or re-run
+    if webhook.pull_request:
+        head_sha = str(webhook.pull_request.head.sha)
+        description = str(webhook.pull_request.body)
+    else:
+        head_sha = str(webhook.check_run.head_sha)
+        pr_url = f'repos/{repo_full_name}/pulls/{webhook.check_run.pull_requests[0].number}'
+        pr_info = ObjectifyJSON(make_github_api_call(pr_url, 'GET', None))
+        description = str(pr_info.body)
+
+    # TODO: needs tweaking
+    if len(description) >= 5:
         check_conclusion = 'success'
         output_title = 'Required information has been filed'
         output_summary = 'Required information of the PR has been filled.'
@@ -46,19 +39,18 @@ def pr_template_check(webhook):
 
 
 def check_trunk_status(webhook):
-    """
-    Steps -
-    1. Check for event - PR comments
-    2. Set in_progress
-    3. Set status
-    """
     repo_full_name = str(webhook.repository.full_name)
 
     check_name = 'Multiproduct Trunk Status'
     check_status = 'completed'
 
-    pr_number = str(webhook.pull_request.number)
-    head_sha = str(webhook.pull_request.head.sha)
+    # It could be either from run or re-run
+    if webhook.pull_request:
+        pr_number = str(webhook.pull_request.number)
+        head_sha = str(webhook.pull_request.head.sha)
+    else:
+        pr_number = str(webhook.check_run.pull_requests[0].number)
+        head_sha = str(webhook.check_run.head_sha)
 
     commits_url = f'repos/{repo_full_name}/pulls/{pr_number}/commits'
     commits = ObjectifyJSON(make_github_api_call(commits_url, 'GET', None))
@@ -112,7 +104,8 @@ def check_conversation_resolution(webhook):
 
     # Comment
     elif webhook.issue and webhook.issue.pull_request and webhook.comment:
-        pr_info = ObjectifyJSON(make_github_api_call(str(webhook.issue.pull_request.url), 'GET', None))
+        pr_url = f'repos/{repo_full_name}/pulls/{webhook.issue.number}'
+        pr_info = ObjectifyJSON(make_github_api_call(pr_url, 'GET', None))
         pr_number = str(webhook.issue.number)
         head_sha = str(pr_info.head.sha)
 
