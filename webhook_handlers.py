@@ -10,21 +10,6 @@ from objectify_json import ObjectifyJSON
 log = logging.getLogger(__name__)
 
 
-def zac_test(webhook):
-    repo_full_name = str(webhook.repository.full_name)
-    pr_number = str(webhook.pull_request.number)
-
-    comments_url = f'repos/{repo_full_name}/issues/{pr_number}/comments'
-
-    # Make the API call.
-    make_github_api_call(
-        comments_url,
-        'POST', {
-            'body': "This is test PR from Zac !!"
-        }
-    )
-
-
 def testing_done_pass(description):
     testing_done = description.lower().split('testing done')
     return len(testing_done) > 1 and len(testing_done[1]) > 5
@@ -47,15 +32,15 @@ def pr_template_check(webhook):
     check_name = 'PR Basic Information Check'
     check_status = 'completed'
     head_sha = str(webhook.pull_request.head.sha)
-    output_title = 'Status of Completion of PR Description Section'
 
-    if testing_done_pass(description) and description_pass(description) and not check_not_pass(description):
+    if description_pass(description):
         check_conclusion = 'success'
-        output_summary = 'Basic information of the PR has been filled.'
+        output_title = 'Required information has been filed'
+        output_summary = 'Required information of the PR has been filled.'
     else:
         check_conclusion = 'failure'
-        output_summary = 'Please make out the Description and Testing Done section are filled and ' \
-                         'checkboxes are checked.'
+        output_title = 'Required information is still missing'
+        output_summary = 'Please make sure the PR Description section is filled.'
 
     set_check_on_pr(repo_full_name, check_name, check_status, check_conclusion, head_sha, output_title, output_summary)
 
@@ -72,52 +57,30 @@ def check_trunk_status(webhook):
     check_name = 'Multiproduct Trunk Status'
     check_status = 'completed'
 
-    if webhook.issue and webhook.issue.pull_request and webhook.comment:
-        # Automated comment, no need to refresh
-        issue_author = str(webhook.issue.user.login)
-        if 'linkedin' in issue_author:
-            return
+    pr_number = str(webhook.pull_request.number)
+    head_sha = str(webhook.pull_request.head.sha)
 
-        # Get PR info to get Head SHA and author
-        pr_number = str(webhook.issue.number)
-        pr_url = f'repos/{repo_full_name}/pulls/{pr_number}'
-        pr_info = ObjectifyJSON(make_github_api_call(pr_url, 'GET', None))
-        head_sha = str(pr_info.head.sha)
-        author = str(pr_info.user.login)
+    commits_url = f'repos/{repo_full_name}/pulls/{pr_number}/commits'
+    commits = ObjectifyJSON(make_github_api_call(commits_url, 'GET', None))
 
-        log.info(f"Getting comments for PR: {repo_full_name}/{pr_number} at {head_sha}")
+    commit_messages = [str(commit['commit']['message']) for commit in commits]
+    found_override = any(['TRUNKBLOCKERFIX' in commit_message for commit_message in commit_messages])
 
-        check_conclusion = 'failure'
-        output_title = 'MP locked, merge not allowed'
-        output_summary = '''MP locked by owners of this Multiproduct. No new merges are allowed at this time.
-        You may override this check by adding a comment `TRUNKBLOCKERFIX` to this PR. Doing so will notify the owners of this merge.
-        Read more about this policy at https://iwww.corp.linkedin.com/wiki/cf/display/TOOLS/questions/184796939/what-is-the-recommended-way-to-lock-checkins-to-multiproduct
+    check_conclusion = 'failure'
+    output_title = 'MP locked, merge not allowed'
+    output_summary = '''MP locked by owners of this Multiproduct. No new merges are allowed at this time.
+    You may override this check by adding string `TRUNKBLOCKERFIX` to the comment message and sync the commit to Github.
+    Doing so will notify the owners of this merge. Read more about MP lock policy [here](https://iwww.corp.linkedin.com/wiki/cf/display/TOOLS/questions/184796939/what-is-the-recommended-way-to-lock-checkins-to-multiproduct).
+    '''
+
+    if found_override:
+        check_conclusion = 'success'
+        output_title = 'MP lock overridden'
+        output_summary = '''Forced status check to success via `TRUNKBLOCKERFIX` override.
+        More information about this override can be found [here](https://iwww.corp.linkedin.com/wiki/cf/display/TOOLS/Multiproduct+Trunk+Development#MultiproductTrunkDevelopment-TRUNKBLOCKERFIX).
         '''
 
-        found_override = False
-
-        if 'TRUNKBLOCKERFIX' in str(webhook.comment.body):
-            found_override = True
-        else:
-            # Get comments
-            comments_url = f'repos/{repo_full_name}/issues/{pr_number}/comments'
-            comments = make_github_api_call(comments_url, 'GET', None)
-
-            for comment in comments:
-                comment = ObjectifyJSON(comment)
-                comment_author = str(comment.user.login)
-                if 'TRUNKBLOCKERFIX' in str(comment.body) and author == comment_author:
-                    found_override = True
-                    break
-
-        if found_override:
-            check_conclusion = 'success'
-            output_title = 'MP lock overridden.'
-            output_summary = '''Forced status check to success via TRUNKBLOCKERFIX override.
-            More information about this override can be found at https://iwww.corp.linkedin.com/wiki/cf/display/TOOLS/Multiproduct+Trunk+Development#MultiproductTrunkDevelopment-TRUNKBLOCKERFIX
-            '''
-
-        set_check_on_pr(repo_full_name, check_name, check_status, check_conclusion, head_sha, output_title, output_summary)
+    set_check_on_pr(repo_full_name, check_name, check_status, check_conclusion, head_sha, output_title, output_summary)
 
 
 def check_conversation_resolution(webhook):
@@ -132,6 +95,7 @@ def check_conversation_resolution(webhook):
     output_title = None
     output_summary = None
 
+    # PR edit
     if webhook.pull_request.head.sha:
         pr_number = str(webhook.pull_request.number)
         head_sha = str(webhook.pull_request.head.sha)
@@ -146,10 +110,16 @@ def check_conversation_resolution(webhook):
 
             return
 
+    # Comment
     elif webhook.issue and webhook.issue.pull_request and webhook.comment:
-        pr_number = str(webhook.issue.number)
         pr_info = ObjectifyJSON(make_github_api_call(str(webhook.issue.pull_request.url), 'GET', None))
+        pr_number = str(webhook.issue.number)
         head_sha = str(pr_info.head.sha)
+
+    # Re-run
+    elif webhook.check_run and webhook.check_run.pull_requests:
+        pr_number = str(webhook.check_run.pull_request[0])
+        head_sha = str(webhook.check_run.head_sha)
 
     # Incomplete info, give up
     if not pr_number or not head_sha:
