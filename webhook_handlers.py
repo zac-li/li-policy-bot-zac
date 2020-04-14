@@ -29,11 +29,11 @@ def pr_template_check(webhook):
     if len(description) >= 5:
         check_conclusion = 'success'
         output_title = 'Required information has been filed'
-        output_summary = 'Required information of the PR has been filled.'
+        output_summary = 'Required information of this pull request has been filled.'
     else:
         check_conclusion = 'failure'
         output_title = 'Required information is still missing'
-        output_summary = 'Please make sure the PR Description section is filled.'
+        output_summary = 'Please make sure the Pull Request Description section is filled.'
 
     set_check_on_pr(repo_full_name, check_name, check_status, check_conclusion, head_sha, output_title, output_summary)
 
@@ -96,7 +96,7 @@ def check_conversation_resolution(webhook):
         if str(webhook.action) == 'opened':
             check_conclusion = 'success'
             output_title = 'All conversations are resolved'
-            output_summary = 'Check passed as there are no unresolved comments on this Pull Request.'
+            output_summary = 'Check passed as there are no unresolved comments on this pull request.'
 
             set_check_on_pr(repo_full_name, check_name, check_status, check_conclusion, head_sha, output_title, output_summary)
 
@@ -130,14 +130,14 @@ def set_conversation_result_check(resolved, total, repo_full_name, check_name, h
     if resolved == total:
         check_conclusion = 'success'
         output_title = 'All conversations are resolved'
-        output_summary = 'Check passed as there are no unresolved conversations on this Pull Request.'
+        output_summary = 'Check passed as there are no unresolved conversations on this pull request.'
     else:
         check_conclusion = 'failure'
         output_title = f'{resolved}/{total} conversations resolved'
         output_summary = f'Check failed because only {resolved}/{total} conversations resolved. \n' \
-                         f'Please handle the unresolved one(s) and re-run this check manually or wait for ' \
-                         f'the next automated check run in 1 minute.'
-
+                         f'Please handle the unresolved one(s) and re-run manually or wait for ' \
+                         f'the next automated check run in 1 minute. \n' \
+                         f'More information about how the check is conducted can be found [here](https://linkedin.com/)'
     set_check_on_pr(repo_full_name, check_name, 'completed', check_conclusion, head_sha, output_title, output_summary)
 
 
