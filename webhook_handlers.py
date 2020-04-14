@@ -130,11 +130,13 @@ def set_conversation_result_check(resolved, total, repo_full_name, check_name, h
     if resolved == total:
         check_conclusion = 'success'
         output_title = 'All conversations are resolved'
-        output_summary = 'Check passed as there are no unresolved comments on this Pull Request.'
+        output_summary = 'Check passed as there are no unresolved conversations on this Pull Request.'
     else:
         check_conclusion = 'failure'
         output_title = f'{resolved}/{total} conversations resolved'
-        output_summary = f'Check failed because only {resolved}/{total} comments resolved.'
+        output_summary = f'Check failed because only {resolved}/{total} conversations resolved. \n' \
+                         f'Please handle the unresolved one(s) and re-run this check manually or wait for ' \
+                         f'the next automated check run in 1 minute.'
 
     set_check_on_pr(repo_full_name, check_name, 'completed', check_conclusion, head_sha, output_title, output_summary)
 
