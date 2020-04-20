@@ -95,7 +95,7 @@ def check_conversation_resolution(webhook):
         # Just created a new PR, will not have any review comments.
         if str(webhook.action) == 'opened':
             check_conclusion = 'success'
-            output_title = 'All conversations are resolved'
+            output_title = 'All Request Changes conversations are resolved'
             output_summary = 'Check passed as there are no unresolved comments on this pull request.'
 
             set_check_on_pr(repo_full_name, check_name, check_status, check_conclusion, head_sha, output_title, output_summary)
@@ -130,26 +130,48 @@ def set_conversation_result_check(resolved, total, repo_full_name, check_name, h
     if resolved == total:
         check_conclusion = 'success'
         output_title = 'All conversations are resolved'
-        output_summary = 'Check passed as there are no unresolved conversations on this pull request.'
+        output_summary = 'Check passed as there are no unresolved Request Changes conversations on this pull request.'
     else:
         check_conclusion = 'failure'
         output_title = f'{resolved}/{total} conversations resolved'
-        output_summary = f'Check failed because only {resolved}/{total} conversations resolved. \n' \
+        output_summary = f'Check failed because only {resolved}/{total} ' \
+                         f'[Request Changes conversations](' \
+                         f'https://help.github.com/en/github/collaborating-with-' \
+                         f'issues-and-pull-requests/about-pull-request-reviews) resolved. \n' \
                          f'Please handle the unresolved one(s) and re-run manually or wait for ' \
                          f'the next automated check run in 1 minute. \n' \
-                         f'More information about how the check is conducted can be found [here](https://linkedin.com/)'
+                         f'More information about how the check is conducted can be found [here](https://linkedin.com/).'
     set_check_on_pr(repo_full_name, check_name, 'completed', check_conclusion, head_sha, output_title, output_summary)
 
 
 def _get_resolved_and_total_conversations(owner, repo, pr_number):
-    # Get review comments from GraphQL API
+    """Calculate the resolved and total Request Changes conversations.
+
+    GraphQL can be examined by the tool provided by Github:  https://developer.github.com/v4/explorer/
+    """
     query = format_query("""
     {
         repository(owner:"$owner", name:"$repo") {
             pullRequest(number:$pr_number) {
-                reviewThreads(last: 50) {
+                reviewThreads(last: 100) {
                     nodes {
                       isResolved
+                        comments(last: 100) {
+                            nodes {
+                              id
+                              body
+                            }
+                        }
+                    }
+                }
+                reviews(last:100, states: CHANGES_REQUESTED) {
+                    nodes {
+                        comments(last: 100) {
+                            nodes {
+                                id
+                                body
+                            }
+                        }
                     }
                 }
             }
@@ -159,13 +181,27 @@ def _get_resolved_and_total_conversations(owner, repo, pr_number):
 
     response = ObjectifyJSON(make_github_gql_api_call(query))
 
-    # Count the resolved and unresolved conversations.
-    resolved = total = 0
-    for node in response.data.repository.pullRequest.reviewThreads.nodes._data:
-        total += 1
-        resolved += (1 if node['isResolved'] else 0)
+    # This is excluding individual CHANGES_REQUESTED review (without nodes/conversation) since they are un-resolvable
+    changes_requested_review_with_conversations = [comment['comments']['nodes']
+                                                   for comment in response.data.repository.pullRequest.reviews.nodes._data
+                                                   if comment['comments']['nodes']]
 
-    return resolved, total
+    # Get a set of conversation IDs
+    changes_requested_conversation_ids = set()
+    for review in changes_requested_review_with_conversations:
+        for conversation in review:
+            changes_requested_conversation_ids.add(conversation['id'])
+
+    total = len(changes_requested_conversation_ids)
+    unresolved = 0
+    for node in response.data.repository.pullRequest.reviewThreads.nodes._data:
+        if node['isResolved'] is False:
+            # Mark unresolved as long as the the conversation's first comment/node ID
+            # matches any CHANGES_REQUESTED conversation id
+            if node['comments']['nodes'][0]['id'] in changes_requested_conversation_ids:
+                unresolved += 1
+
+    return total - unresolved, total
 
 
 def get_sha(owner, repo):
