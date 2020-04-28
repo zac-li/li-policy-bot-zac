@@ -1,3 +1,4 @@
+import collections
 import logging
 from constants import OVERRIDE_ALLOWED
 from gh_utils import make_github_api_call, make_github_gql_api_call, set_check_on_pr, format_query
@@ -39,6 +40,8 @@ def pr_template_check(webhook):
 
 
 def check_trunk_status(webhook):
+    # TODO: needs to be improved
+    return
     repo_full_name = str(webhook.repository.full_name)
 
     check_name = 'Multiproduct Trunk Status'
@@ -81,26 +84,22 @@ def check_conversation_resolution(webhook):
     repo = repo_full_name.split('/')[1]
     pr_number = None
 
-    check_name = 'Conversation Resolution'
-    check_status = 'completed'
+    check_name = 'Requested Changes Resolution'
     head_sha = None
     output_title = None
     output_summary = None
+
+    # Just created a new PR, will not have any reviews.
+    if str(webhook.action) == 'opened':
+        output_title = 'There are no unaddressed requested changes'
+        output_summary = 'Check passed as there are no unaddressed requested changes on this pull request.'
+        set_check_on_pr(repo_full_name, check_name, 'completed', 'success', head_sha, output_title, output_summary)
+        return
 
     # PR edit
     if webhook.pull_request.head.sha:
         pr_number = str(webhook.pull_request.number)
         head_sha = str(webhook.pull_request.head.sha)
-
-        # Just created a new PR, will not have any review comments.
-        if str(webhook.action) == 'opened':
-            check_conclusion = 'success'
-            output_title = 'All Request Changes conversations are resolved'
-            output_summary = 'Check passed as there are no unresolved comments on this pull request.'
-
-            set_check_on_pr(repo_full_name, check_name, check_status, check_conclusion, head_sha, output_title, output_summary)
-
-            return
 
     # Comment
     elif webhook.issue and webhook.issue.pull_request and webhook.comment:
@@ -118,28 +117,49 @@ def check_conversation_resolution(webhook):
     if not pr_number or not head_sha:
         return
 
-    # Set in_progress state
     set_check_on_pr(repo_full_name, check_name, 'in_progress', None, head_sha, output_title, output_summary)
 
     resolved, total = _get_resolved_and_total_conversations(owner, repo, pr_number)
+    contain_unhandled_requested_change = _is_containing_unhandled_requested_changes(repo_full_name, pr_number)
 
-    set_conversation_result_check(resolved, total, repo_full_name, check_name, head_sha)
+    set_conversation_result_check(resolved, total, contain_unhandled_requested_change, repo_full_name, check_name, head_sha)
 
 
-def set_conversation_result_check(resolved, total, repo_full_name, check_name, head_sha):
-    if resolved == total:
+def _is_containing_unhandled_requested_changes(repo_full_name, pr_number):
+    review_url = f'repos/{repo_full_name}/pulls/{pr_number}/reviews'
+    review_list = make_github_api_call(review_url, 'GET', None)
+
+    user_to_review = collections.defaultdict(list)
+    for review in review_list:
+        user_to_review[review['user']['login']].append(review['state'])
+
+    for _, review_list in user_to_review.items():
+        try:
+            changes_requested_index = review_list.index('CHANGES_REQUESTED')
+        except ValueError:
+            # continue to check other user(s) since there's no CHANGES_REQUESTED from this user
+            continue
+        reviews_after_changes_requested = review_list[changes_requested_index+1:]
+        if 'APPROVED' not in reviews_after_changes_requested and 'DISMISSED' not in reviews_after_changes_requested:
+            return True
+
+    return False
+
+
+def set_conversation_result_check(resolved, total, contain_unhandled_requested_change, repo_full_name, check_name, head_sha):
+    if (resolved == total) and not contain_unhandled_requested_change:
         check_conclusion = 'success'
-        output_title = 'All conversations are resolved'
-        output_summary = 'Check passed as there are no unresolved Request Changes conversations on this pull request.'
+        output_title = 'There are no unaddressed requested changes'
+        output_summary = 'Check passed as there are no unaddressed requested changes on this pull request.'
     else:
         check_conclusion = 'failure'
-        output_title = f'{resolved}/{total} conversations resolved'
-        output_summary = f'Check failed because only {resolved}/{total} ' \
-                         f'[Request Changes conversations](' \
-                         f'https://help.github.com/en/github/collaborating-with-' \
-                         f'issues-and-pull-requests/about-pull-request-reviews) resolved. \n' \
-                         f'Please handle the unresolved one(s) and re-run manually or wait for ' \
-                         f'the next automated check run in 1 minute. \n' \
+        output_title = f'There are unaddressed requested changes'
+        output_summary = f'Check failed because there are unaddressed [requested changes]' \
+                         f'(https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/about-pull-request-reviews).\n\n ' \
+                         f'Please handle the unresolved one(s) ' \
+                         f'and close associated unresolved conversation(s) \n' \
+                         f'(current resolved requested changes conversations: {resolved}/{total}).\n\n' \
+                         f'To refresh this check, re-run manually or wait for the next automated run in 1 minute. \n\n' \
                          f'More information about how the check is conducted can be found [here](https://linkedin.com/).'
     set_check_on_pr(repo_full_name, check_name, 'completed', check_conclusion, head_sha, output_title, output_summary)
 
@@ -211,12 +231,15 @@ def get_sha(owner, repo):
 
 def run_conversation_check_scan_for_prs(owner, repo):
     pr_shas = get_sha(owner, repo)
-    check_name = 'Conversation Resolution'
+    check_name = 'Requested Changes Resolution'
     for pr_number, sha in pr_shas.items():
         resolved, total = _get_resolved_and_total_conversations(owner, repo, pr_number)
-        log.info(f'Setting conversation resolution status ({resolved}/{total}) '
+        contain_unhandled_requested_change = _is_containing_unhandled_requested_changes(f'{owner}/{repo}', pr_number)
+        log.info(f'Setting conversation resolution status ({resolved}/{total}, '
+                 f'containing unhandled_requested_changes: {contain_unhandled_requested_change}) '
                  f'for PR: {owner}/{repo}/{pr_number} at {sha}')
-        set_conversation_result_check(resolved, total, f'{owner}/{repo}', check_name, sha)
+        set_conversation_result_check(resolved, total, contain_unhandled_requested_change,
+                                      f'{owner}/{repo}', check_name, sha)
 
 
 def process_override(webhook):

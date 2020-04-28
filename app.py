@@ -77,15 +77,17 @@ def process_message():
 
     # TODO: clean up here
     if event_type == 'pull_request' and str(webhook.action).lower() in ['synchronize', 'opened']:
-        pr_template_check(webhook)
-        check_conversation_resolution(webhook)
         check_trunk_status(webhook)
-    if event_type == 'pull_request' and str(webhook.action).lower() == 'edited':
+    if event_type == 'pull_request' and str(webhook.action).lower() in ['opened', 'edited', 'synchronize']:
         pr_template_check(webhook)
-    if event_type == 'pull_request_review_comment':
+    if event_type == 'pull_request' and str(webhook.action).lower() in ['synchronize', 'opened']:
+        check_conversation_resolution(webhook)
+
+    if event_type in ['pull_request_review_comment', 'pull_request_review']:
         check_conversation_resolution(webhook)
     if event_type == 'issue_comment' and str(webhook.action).lower() == 'created':
         check_conversation_resolution(webhook)
+
     if event_type == 'check_run' and str(webhook.action).lower() == 'rerequested':
         if str(webhook.check_run.name) == 'Conversation Resolution':
             check_conversation_resolution(webhook)
