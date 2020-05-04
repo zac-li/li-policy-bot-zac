@@ -84,15 +84,16 @@ def check_conversation_resolution(webhook):
     repo = repo_full_name.split('/')[1]
     pr_number = None
 
-    check_name = 'Requested Changes Resolution'
+    check_name = 'Conversation Resolution'
     head_sha = None
     output_title = None
     output_summary = None
 
     # Just created a new PR, will not have any reviews.
     if str(webhook.action) == 'opened':
-        output_title = 'There are no unaddressed requested changes'
-        output_summary = 'Check passed as there are no unaddressed requested changes on this pull request.'
+        head_sha = str(webhook.pull_request.head.sha)
+        output_title = 'There are no unresolved conversations'
+        output_summary = 'Check passed as there are no unresolved conversations on this pull request.'
         set_check_on_pr(repo_full_name, check_name, 'completed', 'success', head_sha, output_title, output_summary)
         return
 
@@ -120,45 +121,20 @@ def check_conversation_resolution(webhook):
     set_check_on_pr(repo_full_name, check_name, 'in_progress', None, head_sha, output_title, output_summary)
 
     resolved, total = _get_resolved_and_total_conversations(owner, repo, pr_number)
-    contain_unhandled_requested_change = _is_containing_unhandled_requested_changes(repo_full_name, pr_number)
 
-    set_conversation_result_check(resolved, total, contain_unhandled_requested_change, repo_full_name, check_name, head_sha)
-
-
-def _is_containing_unhandled_requested_changes(repo_full_name, pr_number):
-    review_url = f'repos/{repo_full_name}/pulls/{pr_number}/reviews'
-    review_list = make_github_api_call(review_url, 'GET', None)
-
-    user_to_review = collections.defaultdict(list)
-    for review in review_list:
-        user_to_review[review['user']['login']].append(review['state'])
-
-    for _, review_list in user_to_review.items():
-        try:
-            changes_requested_index = review_list.index('CHANGES_REQUESTED')
-        except ValueError:
-            # continue to check other user(s) since there's no CHANGES_REQUESTED from this user
-            continue
-        reviews_after_changes_requested = review_list[changes_requested_index+1:]
-        if 'APPROVED' not in reviews_after_changes_requested and 'DISMISSED' not in reviews_after_changes_requested:
-            return True
-
-    return False
+    set_conversation_result_check(resolved, total, repo_full_name, check_name, head_sha)
 
 
-def set_conversation_result_check(resolved, total, contain_unhandled_requested_change, repo_full_name, check_name, head_sha):
-    if (resolved == total) and not contain_unhandled_requested_change:
+def set_conversation_result_check(resolved, total, repo_full_name, check_name, head_sha):
+    if resolved == total:
         check_conclusion = 'success'
-        output_title = 'There are no unaddressed requested changes'
-        output_summary = 'Check passed as there are no unaddressed requested changes on this pull request.'
+        output_title = 'There are no unresolved conversations'
+        output_summary = 'Check passed as there are no unresolved conversations on this pull request.'
     else:
         check_conclusion = 'failure'
-        output_title = f'There are unaddressed requested changes'
-        output_summary = f'Check failed because there are unaddressed [requested changes]' \
-                         f'(https://help.github.com/en/github/collaborating-with-issues-and-pull-requests/about-pull-request-reviews).\n\n ' \
-                         f'Please handle the unresolved one(s) ' \
-                         f'and close associated unresolved conversation(s) \n' \
-                         f'(current resolved requested changes conversations: {resolved}/{total}).\n\n' \
+        output_title = f'{resolved}/{total} conversations resolved'
+        output_summary = f'Check failed because only {resolved}/{total} conversations resolved. ' \
+                         f'Please handle the unresolved one(s).\n' \
                          f'To refresh this check, re-run manually or wait for the next automated run in 1 minute. \n\n' \
                          f'More information about how the check is conducted can be found [here](https://linkedin.com/).'
     set_check_on_pr(repo_full_name, check_name, 'completed', check_conclusion, head_sha, output_title, output_summary)
@@ -173,25 +149,9 @@ def _get_resolved_and_total_conversations(owner, repo, pr_number):
     {
         repository(owner:"$owner", name:"$repo") {
             pullRequest(number:$pr_number) {
-                reviewThreads(last: 100) {
+                reviewThreads(last: 50) {
                     nodes {
                       isResolved
-                        comments(last: 100) {
-                            nodes {
-                              id
-                              body
-                            }
-                        }
-                    }
-                }
-                reviews(last:100, states: CHANGES_REQUESTED) {
-                    nodes {
-                        comments(last: 100) {
-                            nodes {
-                                id
-                                body
-                            }
-                        }
                     }
                 }
             }
@@ -201,27 +161,13 @@ def _get_resolved_and_total_conversations(owner, repo, pr_number):
 
     response = ObjectifyJSON(make_github_gql_api_call(query))
 
-    # This is excluding individual CHANGES_REQUESTED review (without nodes/conversation) since they are un-resolvable
-    changes_requested_review_with_conversations = [comment['comments']['nodes']
-                                                   for comment in response.data.repository.pullRequest.reviews.nodes._data
-                                                   if comment['comments']['nodes']]
-
-    # Get a set of conversation IDs
-    changes_requested_conversation_ids = set()
-    for review in changes_requested_review_with_conversations:
-        for conversation in review:
-            changes_requested_conversation_ids.add(conversation['id'])
-
-    total = len(changes_requested_conversation_ids)
-    unresolved = 0
+    # Count the resolved and unresolved conversations.
+    resolved = total = 0
     for node in response.data.repository.pullRequest.reviewThreads.nodes._data:
-        if node['isResolved'] is False:
-            # Mark unresolved as long as the the conversation's first comment/node ID
-            # matches any CHANGES_REQUESTED conversation id
-            if node['comments']['nodes'][0]['id'] in changes_requested_conversation_ids:
-                unresolved += 1
+        total += 1
+        resolved += (1 if node['isResolved'] else 0)
 
-    return total - unresolved, total
+    return resolved, total
 
 
 def get_sha(owner, repo):
@@ -234,12 +180,9 @@ def run_conversation_check_scan_for_prs(owner, repo):
     check_name = 'Requested Changes Resolution'
     for pr_number, sha in pr_shas.items():
         resolved, total = _get_resolved_and_total_conversations(owner, repo, pr_number)
-        contain_unhandled_requested_change = _is_containing_unhandled_requested_changes(f'{owner}/{repo}', pr_number)
         log.info(f'Setting conversation resolution status ({resolved}/{total}, '
-                 f'containing unhandled_requested_changes: {contain_unhandled_requested_change}) '
                  f'for PR: {owner}/{repo}/{pr_number} at {sha}')
-        set_conversation_result_check(resolved, total, contain_unhandled_requested_change,
-                                      f'{owner}/{repo}', check_name, sha)
+        set_conversation_result_check(resolved, total, f'{owner}/{repo}', check_name, sha)
 
 
 def process_override(webhook):
