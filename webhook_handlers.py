@@ -91,6 +91,7 @@ def check_conversation_resolution(webhook):
 
     # Just created a new PR, will not have any reviews.
     if str(webhook.action) == 'opened':
+        head_sha = str(webhook.pull_request.head.sha)
         output_title = 'There are no unresolved conversations'
         output_summary = 'Check passed as there are no unresolved conversations on this pull request.'
         set_check_on_pr(repo_full_name, check_name, 'completed', 'success', head_sha, output_title, output_summary)
@@ -131,7 +132,7 @@ def set_conversation_result_check(resolved, total, repo_full_name, check_name, h
         output_summary = 'Check passed as there are no unresolved conversations on this pull request.'
     else:
         check_conclusion = 'failure'
-        output_title = f'There are unresolved conversations'
+        output_title = f'{resolved}/{total} conversations resolved'
         output_summary = f'Check failed because only {resolved}/{total} conversations resolved. ' \
                          f'Please handle the unresolved one(s).\n' \
                          f'To refresh this check, re-run manually or wait for the next automated run in 1 minute. \n\n' \
